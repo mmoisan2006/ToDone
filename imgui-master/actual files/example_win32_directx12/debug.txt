@@ -1,0 +1,3 @@
+autosavePath: C:\Users\matth\Desktop\To-do Project\imgui-master\actual files\example_win32_directx12\Debug\..\saves\autosave\autosave.txt
+fopen for read: SUCCESS
+fopen for write: SUCCESS
