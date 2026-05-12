@@ -329,7 +329,8 @@ int main(int, char**)
         static int priority = 50;
         static int catPriority = 0;
         static int selected_idx = 0;
-        static int rightClicked_idx = 0;
+        static int rightClicked_idxTask = 0;
+        static int rightClicked_idxCat = 0;
         static int done_idx = 0;
         static int undone_idx = 0;
         static int repeat_idx = 0;
@@ -349,7 +350,8 @@ int main(int, char**)
         static bool completedTaskNeedSort = true;
         static bool showCantDelete = false;
         static bool showCantDeleteTask = false;
-        static bool isEditing = false;
+        static bool isEditingTask = false;
+        static bool isEditingCat = false;
         static bool isCompleted = false;
         static bool openTaskEdit = false;
         static bool taskDone = false;
@@ -368,15 +370,20 @@ int main(int, char**)
         //All File management user would do
         if (ImGui::BeginMenu("File")) {
 
-            char* fileName = strrchr(lastUsedPath, '\\'); //Finds last instance of \ in last used path i.e the start of the name
-            fileName = fileName ? fileName + 1 : lastUsedPath;
+            //We need to make a copy to prevent actaully modifying last path used due to pointers
+            char displayName[260];
+            strncpy(displayName, lastUsedPath, sizeof(displayName) - 1);
+            displayName[sizeof(displayName) - 1] = '\0';
 
-            if (fileName != nullptr) {
-                char* dot = strrchr(fileName, '.');
-                if(dot) *dot = '\0'; //as long as the dot exists we replace it with a terminating char
-            }
+            //Find last instance of \ which in c is \\ for some reason
+            char* fileName = strrchr(displayName, '\\');
+            fileName = fileName ? fileName + 1 : displayName;
+            //Just a safety thing here tat if there is a file name we just advance file name by 1 i.e after the \, otherwise we stick to display name
 
-            //Print the file name
+            //We find the . part of the .txt and replace it with the null terminiating char \0
+            char* dot = strrchr(fileName, '.');
+            if (dot) *dot = '\0';
+
             ImGui::Text(fileName);
 
             ImGui::Separator();
@@ -414,7 +421,8 @@ int main(int, char**)
                 if (!path.empty()) {
                     saveFile(taskList, categories, completedTaskList, path.c_str());
                     saveConfig(lastUsedPath);
-                    strncpy(lastUsedPath, path.c_str(), sizeof(lastUsedPath));
+                    strncpy(lastUsedPath, path.c_str(), sizeof(lastUsedPath)-1);
+                    lastUsedPath[sizeof(lastUsedPath) - 1] = '\0';
                     saved = true;
                     weekBucketsDirty = true;
                 }
@@ -690,7 +698,7 @@ int main(int, char**)
 
                     ///Removing/Editing Behaviour
                     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                        rightClicked_idx = row;
+                        rightClicked_idxTask = row;
                         openTaskEdit = true;
                     }
 
@@ -813,21 +821,21 @@ int main(int, char**)
 
             if (ImGui::BeginPopup("##taskEditDelete")) {
                 //Show name as header
-                ImGui::Text(taskList[rightClicked_idx].name);
+                ImGui::Text(taskList[rightClicked_idxTask].name);
                 ImGui::Separator();
 
                 if (ImGui::MenuItem("Edit")) {
                     //We must pass through the initial values to make editing easier instead of having to re-do it fromt scratch
                     taskPopUpOpen = true;
-                    isEditing = true;
+                    isEditingTask = true;
                     //Copy over the variables to the default locations showing them to help prevent repetition of inputs
-                    strncpy(taskName, taskList[rightClicked_idx].name, sizeof(taskList[rightClicked_idx].name) - 1);
+                    strncpy(taskName, taskList[rightClicked_idxTask].name, sizeof(taskList[rightClicked_idxTask].name) - 1);
                     taskName[sizeof(taskName) - 1] = '\0';
-                    priority = taskList[rightClicked_idx].priority;
-                    isCompleted = taskList[rightClicked_idx].completed;
-                    dueDate = taskList[rightClicked_idx].dueDate;
+                    priority = taskList[rightClicked_idxTask].priority;
+                    isCompleted = taskList[rightClicked_idxTask].completed;
+                    dueDate = taskList[rightClicked_idxTask].dueDate;
                     for (int i = 0; i < categories.size(); i++) {
-                        if (strcmp(taskList[rightClicked_idx].cat.name, categories[i].name) == 0) {
+                        if (strcmp(taskList[rightClicked_idxTask].cat.name, categories[i].name) == 0) {
                             selected_idx = i;
                         }
                     }
@@ -838,13 +846,13 @@ int main(int, char**)
                 //Allows for use to delete item removing it form categories
                 if (ImGui::MenuItem("Delete")) {
                     for (int i = 0; i < taskList.size(); i++) {
-                        if ((strcmp(taskList[i].name, taskList[rightClicked_idx].name)) == 0 && i != rightClicked_idx && !hasCopies){
+                        if ((strcmp(taskList[i].name, taskList[rightClicked_idxTask].name)) == 0 && i != rightClicked_idxTask && !hasCopies){
                             hasCopies = true;
                         }
                    }
 
                     if (!hasCopies) {
-                        taskList.erase(taskList.begin() + rightClicked_idx);
+                        taskList.erase(taskList.begin() + rightClicked_idxTask);
                         //Needs to resort priorities
                         taskNeedSort = true;
 
@@ -865,7 +873,7 @@ int main(int, char**)
 
             if (ImGui::BeginPopup("##multiDeletePopup")) {
                 if (ImGui::Selectable("Only delete this task")) {
-                    taskList.erase(taskList.begin() + rightClicked_idx);
+                    taskList.erase(taskList.begin() + rightClicked_idxTask);
                     //safety to ensure no weird behaviour and no going out of bounds if selected_idx would now be out of range
                     if (selected_idx >= taskList.size()) {
                         selected_idx = 0;
@@ -878,7 +886,7 @@ int main(int, char**)
                 if (ImGui::Selectable("Delete all of these tasks")) {
                     char targetName[50];
                     int i = 0;
-                    strcpy(targetName, taskList[rightClicked_idx].name);
+                    strcpy(targetName, taskList[rightClicked_idxTask].name);
                     //We must do this to prevent segfaults since we are actively re-sizing the array we are deleting from 
                     while(i < taskList.size()){
                             if (strcmp(taskList[i].name, targetName) == 0) {
@@ -1080,7 +1088,7 @@ int main(int, char**)
 
                         //Ensure that if user hovers and right clicks a category we open up the category edit/delte popup menu
                         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                            rightClicked_idx = i;
+                            rightClicked_idxCat = i;
                             ImGui::OpenPopup("##CategoryEditDelete");
                         }
 
@@ -1092,17 +1100,17 @@ int main(int, char**)
 
                     if (ImGui::BeginPopup("##CategoryEditDelete")) {
                         //Show name as header
-                        ImGui::Text(categories[rightClicked_idx].name);
+                        ImGui::Text(categories[rightClicked_idxCat].name);
                         ImGui::Separator();
 
                         if (ImGui::MenuItem("Edit")) {
                             //We must pass through the initial values to make editing easier instead of having to re-do it fromt scratch
                             openCategoryPopup = true;
-                            isEditing = true;
-                            strncpy(categoryName, categories[rightClicked_idx].name, sizeof(categories[rightClicked_idx].name) - 1);
+                            isEditingCat = true;
+                            strncpy(categoryName, categories[rightClicked_idxCat].name, sizeof(categories[rightClicked_idxCat].name) - 1);
                             categoryName[sizeof(categoryName)-1] = '\0';
-                            catPriority = categories[rightClicked_idx].priority;
-                            color = categories[rightClicked_idx].color;
+                            catPriority = categories[rightClicked_idxCat].priority;
+                            color = categories[rightClicked_idxCat].color;
                         }
 
                       
@@ -1110,13 +1118,15 @@ int main(int, char**)
                         if (ImGui::MenuItem("Delete")) {
                             if (categories.size() > 1) {
                                 //Re-assign all task with this cateogores to most common one
+                                int fallBack_idx = (rightClicked_idxCat == 0) ? 1 : 0; //Safety so if they are trying to delete the most popular cat we fall back to the second most popular one
+
                                 for (int i = 0; i < taskList.size(); i++) {
-                                    if (strcmp(taskList[i].cat.name, categories[rightClicked_idx].name) == 0) {
-                                        taskList[i].cat = categories[0];
+                                    if (strcmp(taskList[i].cat.name, categories[rightClicked_idxCat].name) == 0) {
+                                        taskList[i].cat = categories[fallBack_idx];
                                     }
                                 }
 
-                                categories.erase(categories.begin() + rightClicked_idx);
+                                categories.erase(categories.begin() + rightClicked_idxCat);
                                 //Needs to resort priorities
                                 catNeedSort = true;
                                 //safety to ensure no weird behaviour and no going out of bounds if selected_idx would now be out of range
@@ -1184,11 +1194,11 @@ int main(int, char**)
                     ImGui::ColorEdit3("Color##", (float*)&color);
 
                     if (ImGui::Button("+") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-                        if (isEditing) {
-                            strncpy(categories[rightClicked_idx].name, categoryName, sizeof(categoryName) - 1);
-                            categories[rightClicked_idx].priority = catPriority;
-                            categories[rightClicked_idx].color = color;
-                            isEditing = false;
+                        if (isEditingCat) {
+                            strncpy(categories[rightClicked_idxCat].name, categoryName, sizeof(categoryName) - 1);
+                            categories[rightClicked_idxCat].priority = catPriority;
+                            categories[rightClicked_idxCat].color = color;
+                            isEditingCat = false;
                         }
                         else
                         {
@@ -1215,14 +1225,14 @@ int main(int, char**)
                 //Once all the information is gathered we insert it into the task list then we close the popup(added extra check to make sure not closing it at wrong time)
                 if (ImGui::Button("Done") || ImGui::IsKeyPressed(ImGuiKey_Enter) && !openCategoryPopup) {
                     //Has to be done like this since strings arent friendly and require to be careful with memory forcing the use of strcpy
-                    if (isEditing) {
-                        strncpy(taskList[rightClicked_idx].name, taskName, sizeof(taskName) - 1);
-                        taskList[rightClicked_idx].name[sizeof(taskList[rightClicked_idx].name) - 1] = '\0';
-                        taskList[rightClicked_idx].priority = priority;
-                        taskList[rightClicked_idx].completed = false;
-                        taskList[rightClicked_idx].dueDate = dueDate;
-                        taskList[rightClicked_idx].cat = categories[selected_idx];
-                        isEditing = false;
+                    if (isEditingTask) {
+                        strncpy(taskList[rightClicked_idxTask].name, taskName, sizeof(taskName) - 1);
+                        taskList[rightClicked_idxTask].name[sizeof(taskList[rightClicked_idxTask].name) - 1] = '\0';
+                        taskList[rightClicked_idxTask].priority = priority;
+                        taskList[rightClicked_idxTask].completed = false;
+                        taskList[rightClicked_idxTask].dueDate = dueDate;
+                        taskList[rightClicked_idxTask].cat = categories[selected_idx];
+                        isEditingTask = false;
 
                     }
                     else {
@@ -1394,11 +1404,11 @@ int main(int, char**)
 
             //Directional arrows to allow to go through the week with clamps preventing you from going more then 3 weeks in both direction
             //This is important for prev week as im going to add auto-clearing of completed task older then a week
-            //if (selectedWeek > -3) {
+            if (selectedWeek > -3) {
                 if (ImGui::ArrowButton("##prevWeek", ImGuiDir_Left)) {
                     selectedWeek--;
                 }
-            //}
+            }
 
             ImGui::SameLine();
             ImGui::Text(overlay);
@@ -1667,7 +1677,7 @@ void openFile(std::vector<task>& list, std::vector<category>& categories, std::v
         //Handles category
         if (strncmp(line, "CAT:", 4) == 0) {
             category c;
-            if (sscanf(line + 4, "%[^,],%d,%f,%f,%f,%f",
+            if (sscanf(line + 4, "%[^|]|%d|%f|%f|%f|%f",
                 c.name,
                 &c.priority,
                 &c.color.x,
@@ -1683,7 +1693,7 @@ void openFile(std::vector<task>& list, std::vector<category>& categories, std::v
         else if(strncmp(line, "UNDONE:",7)==0){
             task t;
             int comp;
-            if (sscanf(line+7, "%[^,],%d,%d,%d,%d,%d,%d,%d,%[^,],%d,%f,%f,%f,%f",
+            if (sscanf(line+7, "%[^|]|%d|%d|%d|%d|%d|%d|%d|%[^|]|%d|%f|%f|%f|%f",
                 t.name,
                 &t.priority,
                 &comp,
@@ -1707,7 +1717,8 @@ void openFile(std::vector<task>& list, std::vector<category>& categories, std::v
         else if (strncmp(line, "DONE:", 5) == 0) {
             task t;
             int comp;
-            if (sscanf(line + 5, "%[^,],%d,%d,%d,%d,%d,%d,%d,%[^,],%d,%f,%f,%f,%f",
+            //the [^|] just shows that it keep reading after the space
+            if (sscanf(line + 5, "%[^|]|%d|%d|%d|%d|%d|%d|%d|%[^|]|%d|%f|%f|%f|%f",
                 t.name,
                 &t.priority,
                 &comp,
@@ -1758,7 +1769,8 @@ void saveFile(std::vector<task>& taskList, std::vector<category> &categories, st
     if (!f) return;
 
     for (int i = 0; i < categories.size(); i++) {
-        fprintf(f, "CAT:%s,%d,%f,%f,%f,%f\n",
+        //Originally used saved files with the , seperator but swapped it to | which is unlikely to be used
+        fprintf(f, "CAT:%s|%d|%f|%f|%f|%f\n",
             categories[i].name,
             categories[i].priority,
             categories[i].color.x,
@@ -1771,7 +1783,7 @@ void saveFile(std::vector<task>& taskList, std::vector<category> &categories, st
 
 
     for (int i = 0; i < taskList.size(); i++) {
-        fprintf(f, "UNDONE:%s,%d,%d,%d,%d,%d,%d,%d,%s,%d,%f,%f,%f,%f\n",
+        fprintf(f, "UNDONE:%s|%d|%d|%d|%d|%d|%d|%d|%s|%d|%f|%f|%f|%f\n",
             taskList[i].name,
             taskList[i].priority,
             taskList[i].completed,
@@ -1790,7 +1802,7 @@ void saveFile(std::vector<task>& taskList, std::vector<category> &categories, st
     }
 
     for (int i = 0; i < completedTaskList.size(); i++) {
-        fprintf(f, "DONE:%s,%d,%d,%d,%d,%d,%d,%d,%s,%d,%f,%f,%f,%f\n",
+        fprintf(f, "DONE:%s|%d|%d|%d|%d|%d|%d|%d|%s|%d|%f|%f|%f|%f\n",
             completedTaskList[i].name,
             completedTaskList[i].priority,
             completedTaskList[i].completed,
@@ -1842,7 +1854,6 @@ std::string GetPathFromUser(bool saveMode) {
         }
         return path;
 
-        return std::string(szFile); // Convert our char array to string
     }
     else {
         return ""; // Return empty if they closed the window
